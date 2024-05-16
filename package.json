@@ -1,0 +1,24 @@
+{
+  "name": "testkit-migrator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "ts-node ./src/main.ts",
+    "test": "ts-node ./src/main.ts --dry --path=/users/efrem/projects/salo/selene/master/client/src/product/explore/services/trip_params/synchronizer/lib/__test__/parser.vitest.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "eslint": "^8.53.0",
+    "prettier": "^3.2.5",
+    "ts-morph": "^22.0.0",
+    "typescript": "^5.4.5"
+  },
+  "devDependencies": {
+    "@types/eslint": "^8.56.10",
+    "@types/node": "^20.12.11",
+    "@types/prettier": "^3.0.0"
+  }
+}
