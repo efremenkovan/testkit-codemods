@@ -29,6 +29,10 @@ export function migrateFromCreateWatchToWatcher(
 
     const isReplaced = replaceCreateWatchWithWatcher(testCaseExpression);
 
+    if (isReplaced) {
+      removeScopeVariableDeclaration(testCaseExpression);
+    }
+
     return isReplaced;
   });
 
@@ -175,43 +179,35 @@ function replaceCreateWatchWithWatcher(testCase: LeftHandSideExpression) {
 
     createWatchExpression?.remove();
     const forkIndex = forkVariableStatement?.getChildIndex();
-    const lastWatcherIndex = testCaseBlockNode
+    const lastWatcher = testCaseBlockNode
       ?.getChildrenOfKind(SyntaxKind.VariableStatement)
       ?.filter((statement) => {
         return statement
           .getDescendantsOfKind(SyntaxKind.CallExpression)
           ?.some((expr) => expr.getText().startsWith("watcher"));
       })
-      .at(-1)
-      ?.getChildIndex();
+      .at(-1);
+
+    const lastWatcherIndex = lastWatcher?.getChildIndex();
 
     const hasLeadingTrivia = index === 0;
     const hasTrailingTrivia = index === list.length - 1;
 
     const indexToPlaceTo = (lastWatcherIndex ?? forkIndex) + 1;
 
-    const newVariableStatement = testCaseBlockNode?.insertVariableStatement(
-      indexToPlaceTo,
-      {
-        declarationKind: VariableDeclarationKind.Const,
-        declarations: [
-          {
-            name: watcherName,
-            initializer: `watcher(${unitName})`,
-          },
-        ],
-      },
-    );
-
-    if (hasLeadingTrivia) {
-      newVariableStatement?.prependWhitespace("\n");
-    }
-
-    if (hasTrailingTrivia) {
-      newVariableStatement?.appendWhitespace("\n");
-    }
-
     removeSeparateFunctionDeclaration(testCase, watcherName);
+
+    testCaseBlockNode?.insertVariableStatement(indexToPlaceTo, {
+      declarationKind: VariableDeclarationKind.Const,
+      declarations: [
+        {
+          name: watcherName,
+          initializer: `watcher(${unitName})`,
+        },
+      ],
+      leadingTrivia: hasLeadingTrivia ? "\n" : undefined,
+      trailingTrivia: hasTrailingTrivia ? "\n" : undefined,
+    });
   });
 
   return (createWatchExpressionList?.length ?? 0) > 0;
@@ -238,4 +234,56 @@ function removeSeparateFunctionDeclaration(
   viFnDeclaration?.remove();
 
   return Boolean(viFnDeclaration);
+}
+
+function removeScopeVariableDeclaration(
+  testCase: LeftHandSideExpression,
+): boolean {
+  const testCaseBlockNode = testCase
+    .getFirstChildByKind(SyntaxKind.ArrowFunction)
+    ?.getFirstChildByKind(SyntaxKind.Block);
+
+  const forkVariableStatement = testCaseBlockNode
+    ?.getChildrenOfKind(SyntaxKind.VariableStatement)
+    .find((variableStatement) => {
+      return variableStatement
+        .getFirstDescendantByKind(SyntaxKind.CallExpression)
+
+        ?.getText()
+        .match(/^testkit\.fork\(/i);
+    });
+
+  const forkBinding = forkVariableStatement?.getFirstDescendantByKind(
+    SyntaxKind.ObjectBindingPattern,
+  );
+
+  const scopeVariableDeclaration = forkBinding
+    ?.getChildrenOfKind(SyntaxKind.BindingElement)
+    .find((bindingElement) => bindingElement.getText() === "scope");
+
+  if (!scopeVariableDeclaration || !forkBinding) return false;
+
+  if (scopeVariableDeclaration.findReferencesAsNodes().length === 0) {
+    forkBinding.replaceWithText((writer) => {
+      const namesToLeave = forkBinding
+        .getChildrenOfKind(SyntaxKind.BindingElement)
+        .map((child) => child.getText())
+        .filter((name) => name !== "scope");
+
+      writer.write("{");
+      writer.space();
+
+      namesToLeave.forEach((name, index, array) => {
+        writer.write(name);
+        writer.conditionalWrite(index !== array.length - 1, ",");
+        writer.space();
+      });
+
+      writer.write("}");
+    });
+
+    return true;
+  }
+
+  return false;
 }
